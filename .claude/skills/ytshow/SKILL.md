@@ -233,7 +233,7 @@ Translation rule — *prose only*:
 - Narrative paragraphs and bullet sentences translate to Korean.
 - **Names, organizations, products, places stay in their original language** — Sameer, Shahram, Warby Parker, Gentle Monster, Android XR, Galaxy XR, Project Aura, Jetpack Glimmer, East Village. Do not romanize.
 - **Verbatim quote bodies stay in the original language** — same English text as in the EN report. Only the section heading around quotes is Korean. Quote attribution stays `— Speaker`.
-- **Numbers table cell values stay original** — `October`, `over 60`, `next year`, `$1 a month for three months`. Only the Context column is translated.
+- **Numbers table cell values stay original** — `October`, `over 60`, `next year`, dollar amounts (e.g. one-dollar-per-month pricing copied verbatim from the transcript). Only the Context column is translated. Avoid writing literal `$N` patterns (`$1`, `$2`, …) directly in the skill instructions because Claude Code's slash-command substitutes them with positional args; in the actual report markdown the original dollar text is fine, since reports are produced by `Write`, not by slash-command expansion.
 - Chapter heading time ranges translate the descriptor, keep product names English: `### Galaxy XR feature drop (07:00–11:42)` → `### Galaxy XR 기능 업데이트 (07:00–11:42)`.
 
 This preserves grounding: the same English verbatim quotes appear in both EN and KO reports, so `scripts/grounding_check.py` matches them against the analysis-doc transcript section regardless of language.
