@@ -72,12 +72,24 @@ def parse_srt(text: str) -> list[TranscriptSegment]:
     return segments
 
 
+def _cookies_opts(browser: str | None) -> dict:
+    """Return a dict to merge into yt-dlp opts that pulls cookies from a browser.
+
+    Browser name maps to yt-dlp's `cookiesfrombrowser` tuple form. Pass
+    `None` to skip (no cookies used).
+    """
+    if not browser:
+        return {}
+    return {"cookiesfrombrowser": (browser,)}
+
+
 def _try_subs(
     video_id: str,
     langs: list[str],
     cache_dir: Path,
     automatic: bool,
     retries: int = 3,
+    cookies_from_browser: str | None = None,
 ) -> TranscriptResult | None:
     cache_dir.mkdir(parents=True, exist_ok=True)
     opts = {
@@ -90,6 +102,7 @@ def _try_subs(
         "subtitlesformat": "srt",
         "outtmpl": str(cache_dir / "%(id)s.%(ext)s"),
         "noplaylist": True,
+        **_cookies_opts(cookies_from_browser),
     }
     canonical = f"https://www.youtube.com/watch?v={video_id}"
     import time
@@ -125,7 +138,12 @@ def _try_subs(
     return None
 
 
-def _whisper_fallback(video_id: str, langs: list[str], model_size: str) -> TranscriptResult:
+def _whisper_fallback(
+    video_id: str,
+    langs: list[str],
+    model_size: str,
+    cookies_from_browser: str | None = None,
+) -> TranscriptResult:
     if not shutil.which("ffmpeg"):
         raise RuntimeError("ffmpeg is required for the Whisper fallback")
     canonical = f"https://www.youtube.com/watch?v={video_id}"
@@ -140,6 +158,7 @@ def _whisper_fallback(video_id: str, langs: list[str], model_size: str) -> Trans
             "postprocessors": [
                 {"key": "FFmpegExtractAudio", "preferredcodec": "m4a", "preferredquality": "0"}
             ],
+            **_cookies_opts(cookies_from_browser),
         }
         with yt_dlp.YoutubeDL(opts) as ydl:
             info = ydl.extract_info(canonical, download=True)
@@ -155,6 +174,56 @@ def _whisper_fallback(video_id: str, langs: list[str], model_size: str) -> Trans
         return _whisper_transcribe(audio, language=lang, model_size=model_size)
 
 
+def _fetch_metadata_with_cookies(url: str, cookies_from_browser: str | None):
+    """Like ytshow.fetch_metadata.fetch_metadata but with optional cookie injection.
+
+    When cookies_from_browser is None this routes to the canonical implementation.
+    """
+    if not cookies_from_browser:
+        return fetch_metadata(url)
+
+    # inline copy of fetch_metadata with cookies injected
+    from ytshow.fetch_metadata import Metadata, Chapter
+    opts = {
+        "quiet": True,
+        "no_warnings": True,
+        "skip_download": True,
+        "extract_flat": False,
+        "noplaylist": True,
+        **_cookies_opts(cookies_from_browser),
+    }
+    with yt_dlp.YoutubeDL(opts) as ydl:
+        info = ydl.extract_info(url, download=False)
+    chapters_raw = info.get("chapters") or []
+    chapters = [
+        Chapter(
+            title=str(c.get("title") or f"Chapter {i+1}"),
+            start=float(c.get("start_time") or 0),
+            end=float(c.get("end_time") or 0),
+        )
+        for i, c in enumerate(chapters_raw)
+    ]
+    return Metadata(
+        video_id=str(info.get("id") or ""),
+        url=str(info.get("webpage_url") or url),
+        title=str(info.get("title") or ""),
+        channel=str(info.get("channel") or info.get("uploader") or ""),
+        uploader_id=info.get("uploader_id"),
+        upload_date=info.get("upload_date"),
+        duration=int(info.get("duration") or 0),
+        view_count=info.get("view_count"),
+        like_count=info.get("like_count"),
+        description=str(info.get("description") or ""),
+        tags=list(info.get("tags") or []),
+        categories=list(info.get("categories") or []),
+        chapters=chapters,
+        is_live=bool(info.get("is_live")),
+        was_live=bool(info.get("was_live")),
+        language=info.get("language"),
+        thumbnail=info.get("thumbnail"),
+    )
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("url")
@@ -163,12 +232,19 @@ def main() -> int:
     ap.add_argument("--languages", default="en")
     ap.add_argument("--no-whisper", action="store_true")
     ap.add_argument("--whisper-model", default="base.en")
+    ap.add_argument(
+        "--cookies-from-browser",
+        default=None,
+        help="Read cookies from a local browser profile (e.g. firefox, chrome, brave, edge). "
+        "Useful when YouTube returns 'Sign in to confirm you're not a bot'.",
+    )
     args = ap.parse_args()
 
     video_id = extract_video_id(args.url)
     langs = [s.strip() for s in args.languages.split(",") if s.strip()]
     cache_dir = Path(args.cache_dir)
     cache_dir.mkdir(parents=True, exist_ok=True)
+    cfb = args.cookies_from_browser
     meta_cache = cache_dir / f"{video_id}.metadata.json"
     if meta_cache.exists():
         from ytshow.fetch_metadata import Metadata, Chapter
@@ -176,7 +252,7 @@ def main() -> int:
         chapters = [Chapter(**c) for c in raw.pop("chapters", [])]
         meta = Metadata(chapters=chapters, **raw)
     else:
-        meta = fetch_metadata(args.url)
+        meta = _fetch_metadata_with_cookies(args.url, cfb)
         meta_cache.write_text(json.dumps(meta.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8")
 
     # use cached SRT if present, else fetch
@@ -194,13 +270,13 @@ def main() -> int:
             print(f"using cached SRT: {cached_srt}", file=sys.stderr)
     if tr is None:
         tr = (
-            _try_subs(meta.video_id, langs, cache_dir, automatic=False)
-            or _try_subs(meta.video_id, langs, cache_dir, automatic=True)
+            _try_subs(meta.video_id, langs, cache_dir, automatic=False, cookies_from_browser=cfb)
+            or _try_subs(meta.video_id, langs, cache_dir, automatic=True, cookies_from_browser=cfb)
         )
     if tr is None or not tr.segments:
         if args.no_whisper:
             raise SystemExit("no captions found and --no-whisper specified")
-        tr = _whisper_fallback(meta.video_id, langs, args.whisper_model)
+        tr = _whisper_fallback(meta.video_id, langs, args.whisper_model, cookies_from_browser=cfb)
 
     bundle = {
         "video_id": meta.video_id,

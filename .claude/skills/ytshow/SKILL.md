@@ -325,7 +325,8 @@ If the transcript is in a high-density language (Korean, Japanese, Chinese), the
 | Symptom | Cause | Fix |
 |---|---|---|
 | `AttributeError: ... has no attribute 'list_transcripts'` | upstream `fetch_transcript.py` uses youtube-transcript-api 0.6.x API; the package on PyPI is now 1.x | use `scripts/fetch_only.py` — it bypasses youtube-transcript-api entirely |
-| `Sign in to confirm you're not a bot` | YouTube rate-limit / anti-bot trip | wait 30s and retry; helper caches metadata + captions so re-runs don't re-hit YouTube |
+| `Sign in to confirm you're not a bot` | YouTube rate-limit / anti-bot trip | First, wait 30s and retry; the helper caches metadata + captions so re-runs don't re-hit YouTube. If the bot check persists, pass `--cookies-from-browser firefox` (or `chrome`, `brave`, `edge`, `chromium`, `opera`, `safari`, `vivaldi`, `whale`) to `scripts/fetch_only.py` — the user must be logged into Google in that browser. The cookie helper authenticates the request and clears bot checks. |
+| `curl https://www.youtube.com/` times out (code=000) while googleapis.com is reachable | network-level block on youtube.com (firewall, ISP, regional restriction, captive portal) | Cookies do **not** fix this; the request never reaches YouTube. Switch to a network with YouTube access (mobile hotspot, VPN), then retry. Or run `ytshow` on a different machine and `git pull` the outputs. |
 | `SSL: CERTIFICATE_VERIFY_FAILED` from yt-dlp | transient YouTube innertube glitch (not a real cert problem) | retry; helper has 3× backoff. Verify with `curl https://www.googleapis.com` |
 | pandoc PDF fails with "weasyprint not found" | venv not activated or weasyprint not installed | `source .venv/bin/activate && pip install weasyprint` |
 | KO PDF shows tofu (□□□) instead of Korean | no CJK font | `sudo apt install fonts-noto-cjk` |
