@@ -6,7 +6,7 @@ from typing import Any
 
 from .fetch_metadata import Metadata
 from .fetch_transcript import TranscriptResult
-from .utils import DOCS_DIR, format_timestamp
+from .utils import DOCS_DIR, format_timestamp, slugify_title, update_outputs_index
 
 
 def _format_upload_date(d: str | None) -> str:
@@ -174,10 +174,27 @@ def write_documents(
     transcript: TranscriptResult,
     analysis: dict[str, Any],
     out_dir: Path = DOCS_DIR,
+    slug: str | None = None,
 ) -> dict[str, Path]:
+    """Write the minimal and rich analysis docs.
+
+    Filenames use a kebab-case ``slug`` derived from the video title via
+    :func:`ytshow.utils.slugify_title` (override by passing ``slug``). The
+    matching row in ``outputs/INDEX.md`` is created or refreshed so the slug
+    can be traced back to the source video.
+    """
     out_dir.mkdir(parents=True, exist_ok=True)
-    minimal_path = out_dir / f"{meta.video_id}.minimal.md"
-    rich_path = out_dir / f"{meta.video_id}.rich.md"
+    slug = slug or slugify_title(meta.title)
+    minimal_path = out_dir / f"{slug}.minimal.md"
+    rich_path = out_dir / f"{slug}.rich.md"
     minimal_path.write_text(build_minimal_doc(meta, transcript, analysis), encoding="utf-8")
     rich_path.write_text(build_rich_doc(meta, transcript, analysis), encoding="utf-8")
-    return {"minimal": minimal_path, "rich": rich_path}
+    update_outputs_index(
+        slug=slug,
+        title=meta.title,
+        channel=meta.channel,
+        upload_date=meta.upload_date or "",
+        video_id=meta.video_id,
+        url=meta.url,
+    )
+    return {"minimal": minimal_path, "rich": rich_path, "slug": slug}  # type: ignore[dict-item]

@@ -5,13 +5,19 @@ not the speaker attribution line `> — ...`) must appear as a substring of the
 "## Full transcript" section in the rich analysis document for the same video.
 
 Usage:
-    python scripts/grounding_check.py <video_id>
+    python scripts/grounding_check.py <slug-or-video-id>
+
+The argument can be either the slug used in the filenames or the original
+YouTube video id; the script resolves the slug via the cached bundle or
+``outputs/INDEX.md``.
 """
 from __future__ import annotations
 
 import re
 import sys
 from pathlib import Path
+
+from ytshow.utils import resolve_slug_from_id
 
 
 def extract_transcript_section(rich_doc: str) -> str:
@@ -39,15 +45,36 @@ def extract_quoted_lines(report_md: str) -> list[str]:
     return out
 
 
+def _resolve_basename(arg: str, docs_dir: Path) -> str:
+    """Return the basename used in outputs/ for ``arg`` (slug or id)."""
+    if (docs_dir / f"{arg}.rich.md").exists():
+        return arg
+    slug = resolve_slug_from_id(arg)
+    if slug and (docs_dir / f"{slug}.rich.md").exists():
+        return slug
+    return arg  # caller will surface a clear "file not found" below
+
+
 def main() -> int:
     if len(sys.argv) < 2:
-        print("usage: grounding_check.py <video_id> [reports_dir] [docs_dir]", file=sys.stderr)
+        print(
+            "usage: grounding_check.py <slug-or-video-id> [reports_dir] [docs_dir]",
+            file=sys.stderr,
+        )
         return 2
-    video_id = sys.argv[1]
+    arg = sys.argv[1]
     reports_dir = Path(sys.argv[2] if len(sys.argv) > 2 else "outputs/reports")
     docs_dir = Path(sys.argv[3] if len(sys.argv) > 3 else "outputs/docs")
 
-    rich_doc = (docs_dir / f"{video_id}.rich.md").read_text(encoding="utf-8")
+    basename = _resolve_basename(arg, docs_dir)
+    rich_path = docs_dir / f"{basename}.rich.md"
+    if not rich_path.exists():
+        print(
+            f"no rich analysis doc found for {arg!r} (tried {rich_path})",
+            file=sys.stderr,
+        )
+        return 2
+    rich_doc = rich_path.read_text(encoding="utf-8")
     transcript = extract_transcript_section(rich_doc)
     # strip leading [hh:mm:ss] timestamps to a single text blob
     transcript_text = re.sub(r"\[\d{1,2}:\d{2}(?::\d{2})?\]\s*", "", transcript)
@@ -58,11 +85,11 @@ def main() -> int:
     targets = []
     for variant in ("minimal", "rich"):
         for suffix in (f"{variant}.md", f"{variant}.ko.md"):
-            p = reports_dir / f"{video_id}.{suffix}"
+            p = reports_dir / f"{basename}.{suffix}"
             if p.exists():
                 targets.append((suffix, p))
     if not targets:
-        print(f"no reports found for {video_id} in {reports_dir}", file=sys.stderr)
+        print(f"no reports found for {basename!r} in {reports_dir}", file=sys.stderr)
         return 2
     for label, p in targets:
         for q in extract_quoted_lines(p.read_text(encoding="utf-8")):

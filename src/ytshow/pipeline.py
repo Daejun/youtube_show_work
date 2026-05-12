@@ -48,13 +48,14 @@ def run_pipeline(
 
     analysis = analyze(meta, transcript, model=model) if model else analyze(meta, transcript)
     doc_paths = write_documents(meta, transcript, analysis.data, out_dir=DOCS_DIR)
+    slug = doc_paths.get("slug") or doc_paths["minimal"].stem.split(".")[0]
 
     report_paths: dict[str, dict[str, Path]] = {}
     if not skip_reports:
         for variant in variants:
             source_doc = doc_paths[variant].read_text(encoding="utf-8")
             paths = write_reports(
-                meta.video_id,
+                slug,
                 source_doc,
                 [variant],
                 out_dir=REPORTS_DIR,

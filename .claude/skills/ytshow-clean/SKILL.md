@@ -22,39 +22,48 @@ Do **not** invoke for: editing one report (use the `ytshow` skill to regenerate)
 
 All paths are relative to the repository root (run from there).
 
-- `outputs/docs/<id>.minimal.md`
-- `outputs/docs/<id>.rich.md`
-- `outputs/reports/<id>.minimal.{md,pdf,docx}`
-- `outputs/reports/<id>.rich.{md,pdf,docx}`
-- `outputs/reports/<id>.minimal.ko.{md,pdf,docx}`
-- `outputs/reports/<id>.rich.ko.{md,pdf,docx}`
-- (optional, only if the user asks) `cache/<id>.{metadata.json,en.srt,bundle.json,facts.json,transcript.txt}`
+Per-video outputs live under a slug-based basename (see the `ytshow` skill for how the slug is derived from the title):
+
+- `outputs/docs/<slug>.minimal.md`
+- `outputs/docs/<slug>.rich.md`
+- `outputs/reports/<slug>.minimal.{md,pdf,docx}`
+- `outputs/reports/<slug>.rich.{md,pdf,docx}`
+- `outputs/reports/<slug>.minimal.ko.{md,pdf,docx}`
+- `outputs/reports/<slug>.rich.ko.{md,pdf,docx}`
+- `outputs/INDEX.md` — shared map; the row for the deleted slug should be dropped, not the whole file.
+- (optional, only if the user asks) `cache/<id>.{metadata.json,en.srt,bundle.json,facts.json,transcript.txt}` — cache stays keyed by YouTube id.
 
 The first set is tracked in git. `cache/` is gitignored.
 
 ## Workflow
 
-### 1. Resolve the video id (or "all")
+### 1. Resolve the slug (or "all")
 
-The user supplies either a YouTube URL, a bare 11-char id, or the literal word "all" / "전체".
+The user supplies a YouTube URL, a bare 11-char id, a slug, or the literal word "all" / "전체". Files are named by slug, so resolve to a slug before deleting:
 
 ```bash
 source .venv/bin/activate
 python -c "
-from ytshow.utils import extract_video_id
 import sys
-print(extract_video_id(sys.argv[1]))
-" "<URL or id>"
+from ytshow.utils import extract_video_id, resolve_slug_from_id
+arg = sys.argv[1]
+try:
+    vid = extract_video_id(arg)
+    slug = resolve_slug_from_id(vid) or vid
+except ValueError:
+    slug = arg  # treat as an already-resolved slug
+print(slug)
+" "<URL, id, or slug>"
 ```
 
-If the user said "all" / "전체", skip the resolver and act on every id present under `outputs/`.
+If the user said "all" / "전체", skip the resolver and act on every slug present under `outputs/` (each unique basename in `outputs/docs/*.rich.md`).
 
 ### 2. Show what will be deleted, get confirmation
 
-List the files that exist for that id before deleting. **Never delete silently.** Even though `git` allows recovery via reflog/history, the user should see the blast radius first.
+List the files that exist for that slug before deleting. **Never delete silently.** Even though `git` allows recovery via reflog/history, the user should see the blast radius first.
 
 ```bash
-ls -la outputs/docs/<id>.* outputs/reports/<id>.* 2>/dev/null || echo "no files for <id>"
+ls -la outputs/docs/<slug>.* outputs/reports/<slug>.* 2>/dev/null || echo "no files for <slug>"
 ```
 
 Print the list and ask the user to confirm in one of:
@@ -64,29 +73,31 @@ Print the list and ask the user to confirm in one of:
 
 If the user already said something unambiguous like "지워" / "delete it" in the triggering message, skip the explicit confirmation prompt. Just summarize what is about to be deleted and proceed.
 
-For "all", also list how many video ids are covered: e.g. "3 video ids found: a3-OJxxW810, ABC123def45, ZYX987wvu65 — 42 files total."
+For "all", also list how many slugs are covered: e.g. "3 slugs found: android-show-io-edition-2026, foo-bar-baz-2025, lorem-ipsum-2024 — 42 files total."
 
 ### 3. Delete the files
 
 ```bash
 # Single video
-rm -f outputs/docs/<id>.minimal.md outputs/docs/<id>.rich.md \
-      outputs/reports/<id>.minimal.md outputs/reports/<id>.minimal.pdf outputs/reports/<id>.minimal.docx \
-      outputs/reports/<id>.rich.md outputs/reports/<id>.rich.pdf outputs/reports/<id>.rich.docx \
-      outputs/reports/<id>.minimal.ko.md outputs/reports/<id>.minimal.ko.pdf outputs/reports/<id>.minimal.ko.docx \
-      outputs/reports/<id>.rich.ko.md outputs/reports/<id>.rich.ko.pdf outputs/reports/<id>.rich.ko.docx
+rm -f outputs/docs/<slug>.minimal.md outputs/docs/<slug>.rich.md \
+      outputs/reports/<slug>.minimal.md outputs/reports/<slug>.minimal.pdf outputs/reports/<slug>.minimal.docx \
+      outputs/reports/<slug>.rich.md outputs/reports/<slug>.rich.pdf outputs/reports/<slug>.rich.docx \
+      outputs/reports/<slug>.minimal.ko.md outputs/reports/<slug>.minimal.ko.pdf outputs/reports/<slug>.minimal.ko.docx \
+      outputs/reports/<slug>.rich.ko.md outputs/reports/<slug>.rich.ko.pdf outputs/reports/<slug>.rich.ko.docx
 
 # All
-git ls-files outputs/ | xargs -r rm -f
+git ls-files outputs/ | grep -v '^outputs/INDEX\.md$' | xargs -r rm -f
 ```
 
-Windows PowerShell equivalent for a single id:
+Windows PowerShell equivalent for a single slug:
 
 ```powershell
 Remove-Item -ErrorAction SilentlyContinue `
-  outputs\docs\<id>.minimal.md, outputs\docs\<id>.rich.md, `
-  outputs\reports\<id>.*
+  outputs\docs\<slug>.minimal.md, outputs\docs\<slug>.rich.md, `
+  outputs\reports\<slug>.*
 ```
+
+After deleting the per-video files, drop the matching row from `outputs/INDEX.md`. The simplest way is to clear `cache/<id>.bundle.json` then regenerate the index by walking remaining docs — or just hand-edit the table to remove the slug row. Do not delete the whole `INDEX.md`; other videos still need their rows.
 
 Only touch tracked files. Do not blow away `.gitkeep` placeholders if they exist.
 
@@ -130,7 +141,7 @@ Skip the push if the user explicitly said "don't push" or "local only".
 
 Tell the user:
 
-- The video id(s) and file count actually deleted.
+- The slug(s) (with corresponding video id) and file count actually deleted.
 - The commit hash.
 - Whether the push succeeded (and the remote branch).
 - Whether the cache was also cleared.
@@ -139,7 +150,7 @@ Tell the user:
 
 | Situation | Behavior |
 |---|---|
-| The id has no files under `outputs/` | Report "no outputs found for `<id>`" and stop. Don't commit an empty change. |
+| The slug has no files under `outputs/` | Report "no outputs found for `<slug>`" and stop. Don't commit an empty change. |
 | Some of the 14 files are missing | Delete what exists, ignore the rest, proceed. The user may have run a previous partial run. |
 | The user supplies "all" but `outputs/` is empty (only `.gitkeep`) | Tell them, do nothing. |
 | `git push` fails because remote moved | `git pull --rebase` then push again. Don't force-push. |

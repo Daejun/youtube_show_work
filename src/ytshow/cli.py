@@ -93,10 +93,10 @@ def report_cmd(
     ensure_dirs()
     variants = _parse_variants(variant)
     fmts = _parse_formats(formats)
-    video_id = doc.stem.split(".")[0]
+    basename = doc.stem.split(".")[0]
     source_doc = doc.read_text(encoding="utf-8")
 
-    paths = write_reports(video_id, source_doc, variants, model=model or "claude-sonnet-4-6")
+    paths = write_reports(basename, source_doc, variants, model=model or "claude-sonnet-4-6")
     for v, p in paths.items():
         console.print(f"  wrote {v} report -> {p}")
         other = [f for f in fmts if f != "md"]

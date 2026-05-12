@@ -63,19 +63,25 @@ def generate_report(
 
 
 def write_reports(
-    video_id: str,
+    basename: str,
     analysis_doc_markdown: str,
     variants: list[str],
     out_dir: Path = REPORTS_DIR,
     model: str = DEFAULT_MODEL,
     client: Anthropic | None = None,
 ) -> dict[str, Path]:
+    """Write report markdowns named ``<basename>.<variant>.md``.
+
+    ``basename`` is typically the slug returned by
+    :func:`ytshow.build_document.write_documents`, but accepts any
+    filename-safe string (e.g. a legacy video id).
+    """
     out_dir.mkdir(parents=True, exist_ok=True)
     client = client or Anthropic()
     paths: dict[str, Path] = {}
     for v in variants:
         md = generate_report(analysis_doc_markdown, v, model=model, client=client)
-        p = out_dir / f"{video_id}.{v}.md"
+        p = out_dir / f"{basename}.{v}.md"
         p.write_text(md, encoding="utf-8")
         paths[v] = p
     return paths

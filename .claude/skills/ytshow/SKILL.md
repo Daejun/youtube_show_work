@@ -25,8 +25,13 @@ All paths are **relative to the repository root**. Run from the repo root (`cd` 
 - Venv: `.venv/` — created on first setup.
 - Helper scripts: `scripts/fetch_only.py`, `scripts/grounding_check.py`.
 - Prompts (read-only reference): `prompts/extract_facts.md`, `prompts/report_factual_minimal.md`, `prompts/report_factual_rich.md`.
-- Cache: `cache/<video_id>.{metadata.json,en.srt,bundle.json,facts.json,transcript.txt}` — gitignored.
-- Outputs: `outputs/{docs,reports}/<video_id>.<variant>[.ko].{md,pdf,docx}` — gitignored.
+- Cache: `cache/<video_id>.{metadata.json,en.srt,bundle.json,facts.json,transcript.txt}` — gitignored, keyed by YouTube id.
+- Outputs: `outputs/{docs,reports}/<slug>.<variant>[.ko].{md,pdf,docx}` — tracked in git.
+- Slug ↔ id map: `outputs/INDEX.md` — auto-updated by `write_documents`; do not hand-edit unless overriding a slug.
+
+### Slug naming
+
+Filenames under `outputs/` use a human-readable **slug** instead of the bare YouTube id, so the directory is scannable. The slug is auto-derived from the video title by `ytshow.utils.slugify_title` — kebab-case, 3–5 words plus a 4-digit year when present, with common filler ("watch", "the", "live", "official", etc.) stripped. Example: `🎬 Watch The Android Show | I/O Edition 2026` → `android-show-io-edition-2026`. `outputs/INDEX.md` keeps the slug↔YouTube-id mapping and is refreshed automatically by the Python build step.
 
 ## Setup on a fresh clone
 
@@ -186,20 +191,24 @@ m = dict(b['metadata']); chapters = [Chapter(**c) for c in m.pop('chapters', [])
 meta = Metadata(chapters=chapters, **m)
 segs = [TranscriptSegment(start=s['start'], end=s['end'], text=s['text']) for s in b['transcript']['segments']]
 tr = TranscriptResult(segments=segs, source=b['transcript']['source'], language=b['transcript']['language'])
-print(write_documents(meta, tr, f, out_dir=DOCS_DIR))
+result = write_documents(meta, tr, f, out_dir=DOCS_DIR)
+print(result)
+print('slug:', result['slug'])
 "
 ```
 
-Produces `outputs/docs/<id>.minimal.md` and `outputs/docs/<id>.rich.md`. Pure Python templating — no LLM call.
+Produces `outputs/docs/<slug>.minimal.md` and `outputs/docs/<slug>.rich.md`, where `<slug>` is auto-derived from the title (see `ytshow.utils.slugify_title`). The returned dict includes the slug; capture it for steps 5–7 so all 14 files for one video share the same basename. The call also inserts or refreshes the slug row in `outputs/INDEX.md`. Pure Python templating — no LLM call.
 
 ### 5. Write the EN reports directly
 
 Reread `prompts/report_factual_minimal.md` and `prompts/report_factual_rich.md` for the section structure. Then `Read` the analysis doc and `Write` each report.
 
+Use the same `<slug>` returned by step 4 as the basename for every report file — that keeps all 14 files for one video grouped together and matches what the grounding check expects.
+
 Structure:
 
-- `outputs/reports/<id>.minimal.md` — only `#` and `##` headers; no tables, bold, italic, emoji, or horizontal rules. Sections in order: title, `## Overview` (one short paragraph), `## Topics covered`, `## People, organizations, products`, `## Numbers and data points` (omit if none), `## Notable quotes`.
-- `outputs/reports/<id>.rich.md` — up to `####` headers; tables and blockquotes OK. Sections in order: title, `## Metadata` (table), `## Executive summary`, `## Topics covered` with `###` per chapter, `## People, organizations, products, places`, `## Numbers and data points` (two-column table: Value | Context), `## Notable quotes` (blockquotes). **Do not add `## Transcript notes`** — the user does not want it.
+- `outputs/reports/<slug>.minimal.md` — only `#` and `##` headers; no tables, bold, italic, emoji, or horizontal rules. Sections in order: title, `## Overview` (one short paragraph), `## Topics covered`, `## People, organizations, products`, `## Numbers and data points` (omit if none), `## Notable quotes`.
+- `outputs/reports/<slug>.rich.md` — up to `####` headers; tables and blockquotes OK. Sections in order: title, `## Metadata` (table), `## Executive summary`, `## Topics covered` with `###` per chapter, `## People, organizations, products, places`, `## Numbers and data points` (two-column table: Value | Context), `## Notable quotes` (blockquotes). **Do not add `## Transcript notes`** — the user does not want it.
 
 **Reports MUST NOT contain timestamps in the body.** Inline `[mm:ss]` citations interrupt reading. This overrides the upstream "every factual sentence ends in `[mm:ss]`" rule for the *report* surface. The analysis docs still hold every timestamp, and the grounding check still validates verbatim quotes.
 
@@ -225,7 +234,7 @@ If a transcript line is *just* a transition with no factual payload, it does not
 
 ### 5b. Korean variant — always produce alongside English
 
-Produce a Korean variant for each report at `outputs/reports/<id>.<variant>.ko.md`. The full set per video is `minimal.md`, `minimal.ko.md`, `rich.md`, `rich.ko.md`, plus their `.pdf` / `.docx`. The user wants both languages by default.
+Produce a Korean variant for each report at `outputs/reports/<slug>.<variant>.ko.md`. The full set per video is `minimal.md`, `minimal.ko.md`, `rich.md`, `rich.ko.md`, plus their `.pdf` / `.docx`. The user wants both languages by default.
 
 Translation rule — *prose only*:
 
@@ -247,7 +256,7 @@ python -c "
 from pathlib import Path
 from ytshow.convert import convert_all
 for v in ('minimal', 'rich', 'minimal.ko', 'rich.ko'):
-    md = Path(f'outputs/reports/<id>.{v}.md')
+    md = Path(f'outputs/reports/<slug>.{v}.md')
     if md.exists():
         out = convert_all(md, ['pdf', 'docx'])
         print(v, out)
@@ -259,21 +268,23 @@ PDF engine: weasyprint (in the venv). Pandoc will warn about unsupported CSS —
 ### 7. Grounding check
 
 ```bash
-python scripts/grounding_check.py <id>
+python scripts/grounding_check.py <slug-or-id>
 ```
 
-Confirms every blockquote body (excluding `— speaker` attribution) in every report file (EN minimal, EN rich, KO minimal, KO rich) appears in the `## Full transcript` section of the rich analysis doc. Must report `OK`. If `WARNING: N unmatched`, fix those quotes — never ship a report with ungrounded quotes.
+The script accepts either the slug or the YouTube id — it resolves the slug from `cache/<id>.bundle.json` or `outputs/INDEX.md` when given an id. It confirms every blockquote body (excluding `— speaker` attribution) in every report file (EN minimal, EN rich, KO minimal, KO rich) appears in the `## Full transcript` section of the rich analysis doc. Must report `OK`. If `WARNING: N unmatched`, fix those quotes — never ship a report with ungrounded quotes.
 
 ### 8. Final inventory
 
-Fourteen files per video (2 analysis docs + 4 reports × 3 formats):
+Fourteen files per video (2 analysis docs + 4 reports × 3 formats), all sharing the same slug basename:
 
-- `outputs/docs/<id>.minimal.md`
-- `outputs/docs/<id>.rich.md`
-- `outputs/reports/<id>.minimal.{md,pdf,docx}`
-- `outputs/reports/<id>.rich.{md,pdf,docx}`
-- `outputs/reports/<id>.minimal.ko.{md,pdf,docx}`
-- `outputs/reports/<id>.rich.ko.{md,pdf,docx}`
+- `outputs/docs/<slug>.minimal.md`
+- `outputs/docs/<slug>.rich.md`
+- `outputs/reports/<slug>.minimal.{md,pdf,docx}`
+- `outputs/reports/<slug>.rich.{md,pdf,docx}`
+- `outputs/reports/<slug>.minimal.ko.{md,pdf,docx}`
+- `outputs/reports/<slug>.rich.ko.{md,pdf,docx}`
+
+Plus one shared bookkeeping file: `outputs/INDEX.md` (auto-updated by step 4).
 
 Show the user a summary and the first ~30 lines of each report.
 
@@ -282,15 +293,15 @@ Show the user a summary and the first ~30 lines of each report.
 `outputs/` is tracked in git so reports sync across machines. After a successful run (grounding check `OK`, all 14 files present), commit and push:
 
 ```bash
-git add outputs/docs/<id>.* outputs/reports/<id>.*
-git commit -m "Add ytshow outputs for <video-title-or-id> (<id>)"
+git add outputs/docs/<slug>.* outputs/reports/<slug>.* outputs/INDEX.md
+git commit -m "Add ytshow outputs for <video-title> (<id>)"
 git push
 ```
 
 Notes:
 
 - Use a descriptive commit message: video title in plain ASCII if possible, with the video id in parentheses (e.g. `Add ytshow outputs for The Android Show XR Edition (a3-OJxxW810)`). The id matters most — it is the unique key.
-- Stage only the new video's files. Don't bulk-add unrelated changes the user may have in flight (`git status` first if uncertain).
+- Stage only the new video's files plus `outputs/INDEX.md` (which is refreshed every run). Don't bulk-add unrelated changes the user may have in flight (`git status` first if uncertain).
 - If the push is rejected because the remote moved, do a `git pull --rebase` and try again. Don't force-push — the outputs branch is shared.
 - `cache/` is still gitignored and stays local. Other machines regenerate it on demand.
 - If the user explicitly says "don't push" or "skip push" for this run, skip this step. The default is to push.
