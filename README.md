@@ -6,10 +6,10 @@ For setup and how to run it, see **[USAGE.md](USAGE.md)**.
 
 Two ways to run it:
 
-- **As a Claude Code skill** (recommended) — no `ANTHROPIC_API_KEY` needed. The skill at [.claude/skills/ytshow/SKILL.md](.claude/skills/ytshow/SKILL.md) auto-loads when you open this repo in Claude Code, and Claude Code itself performs the LLM steps in-session. Always produces a paired Korean variant.
+- **As a Claude Code skill** (recommended) — no `ANTHROPIC_API_KEY` needed. The skill at [.claude/skills/ytshow/SKILL.md](.claude/skills/ytshow/SKILL.md) auto-loads when you open this repo in Claude Code, and Claude Code itself performs the LLM steps in-session. Always produces a paired Korean variant, then commits and pushes the generated outputs so they sync across machines. A companion skill at [.claude/skills/ytshow-clean/SKILL.md](.claude/skills/ytshow-clean/SKILL.md) removes per-video outputs and pushes the deletion.
 - **As a Python CLI** — the original `ytshow` command that calls `api.anthropic.com` via the Anthropic SDK. Requires an API key, produces English reports only.
 
-Both share the same deterministic plumbing (yt-dlp metadata, captions, document assembly, pandoc) and the same output layout.
+Runs on Linux, macOS, and Windows (WSL2 recommended; native PowerShell works with minor command substitutions). Both share the same deterministic plumbing (yt-dlp metadata, captions, document assembly, pandoc) and the same output layout.
 
 ## What it produces
 
@@ -95,8 +95,9 @@ prompts/
 tests/
   test_utils.py
   test_grounding.py
-outputs/                         # gitignored; generated per run
+outputs/                         # tracked in git so generated reports sync across machines
 cache/                           # gitignored; per-video metadata / srt / bundle / facts / transcript
+.claude/skills/ytshow-clean/     # companion skill for deleting per-video outputs
 ```
 
 ## Tests

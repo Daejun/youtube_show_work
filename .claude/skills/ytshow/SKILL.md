@@ -30,11 +30,14 @@ All paths are **relative to the repository root**. Run from the repo root (`cd` 
 
 ## Setup on a fresh clone
 
-If `.venv/` does not exist, set it up once:
+If `.venv/` does not exist, set it up once. Pick the section that matches the host OS.
+
+### Linux / macOS / WSL2 (recommended)
 
 ```bash
-# System deps (sudo)
-sudo apt-get install -y ffmpeg pandoc fonts-noto-cjk
+# System deps (sudo on Linux; brew on macOS)
+sudo apt-get install -y ffmpeg pandoc fonts-noto-cjk    # Debian/Ubuntu
+# brew install ffmpeg pandoc                            # macOS
 
 # Python venv + package + PDF engine
 python3 -m venv .venv
@@ -44,15 +47,46 @@ pip install -e '.[stt,test]'
 pip install weasyprint
 ```
 
-Verify:
+### Windows (native PowerShell)
+
+```powershell
+# System deps
+winget install -e --id Gyan.FFmpeg
+winget install -e --id JohnMacFarlane.Pandoc
+# Korean fonts: Windows already ships Malgun Gothic — no install needed.
+
+# Python venv + package + PDF engine
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install -U pip
+pip install -e ".[stt,test]"
+pip install weasyprint    # if this fails (GTK/Pango), install wkhtmltopdf instead:
+                          # winget install -e --id wkhtmltopdf.wkhtmltox
+```
+
+`src/ytshow/convert.py` auto-detects the PDF engine in this order: `weasyprint → wkhtmltopdf → xelatex → pdflatex`. If weasyprint refuses to install on native Windows (this happens), `wkhtmltopdf` is the easiest fallback. The Korean Noto/Malgun glyphs work with all three.
+
+### Verify (any OS)
 
 ```bash
 python -m pytest -q              # 11 tests should pass
-fc-list :lang=ko | head -1       # confirms Korean fonts (for KO PDFs)
-which ffmpeg pandoc              # both required
 ```
 
+Korean PDF rendering check — only matters if the user will read KO PDFs. On Linux/WSL run `fc-list :lang=ko | head -1`; on Windows assume Malgun Gothic is installed.
+
 No `ANTHROPIC_API_KEY` is needed — the skill flow performs the LLM work in-session.
+
+### Shell command portability
+
+All workflow snippets below use bash-style syntax (`source .venv/bin/activate`, forward-slash paths). On native Windows PowerShell, the only routine substitution you need is the venv activation:
+
+| Linux / macOS / WSL2 / Git Bash | Native Windows PowerShell |
+|---|---|
+| `source .venv/bin/activate` | `.venv\Scripts\Activate.ps1` |
+| `python3` | `python` |
+| `python scripts/fetch_only.py "<URL>"` | identical (Python args are quoted-path-safe) |
+
+Everything done through Python (`-c "..."`, the helpers in `scripts/`, the convert/build modules) is cross-platform — Pathlib normalizes separators, and pandoc/yt-dlp behave the same.
 
 ## Hard rules (carry over from `prompts/extract_facts.md`)
 
@@ -242,6 +276,26 @@ Fourteen files per video (2 analysis docs + 4 reports × 3 formats):
 - `outputs/reports/<id>.rich.ko.{md,pdf,docx}`
 
 Show the user a summary and the first ~30 lines of each report.
+
+### 9. Commit and push outputs
+
+`outputs/` is tracked in git so reports sync across machines. After a successful run (grounding check `OK`, all 14 files present), commit and push:
+
+```bash
+git add outputs/docs/<id>.* outputs/reports/<id>.*
+git commit -m "Add ytshow outputs for <video-title-or-id> (<id>)"
+git push
+```
+
+Notes:
+
+- Use a descriptive commit message: video title in plain ASCII if possible, with the video id in parentheses (e.g. `Add ytshow outputs for The Android Show XR Edition (a3-OJxxW810)`). The id matters most — it is the unique key.
+- Stage only the new video's files. Don't bulk-add unrelated changes the user may have in flight (`git status` first if uncertain).
+- If the push is rejected because the remote moved, do a `git pull --rebase` and try again. Don't force-push — the outputs branch is shared.
+- `cache/` is still gitignored and stays local. Other machines regenerate it on demand.
+- If the user explicitly says "don't push" or "skip push" for this run, skip this step. The default is to push.
+
+After push, tell the user the commit hash and confirm the remote is in sync.
 
 ## Token / context budget
 

@@ -11,10 +11,8 @@ build/
 dist/
 
 # runtime artifacts
-outputs/docs/*
-outputs/reports/*
-!outputs/docs/.gitkeep
-!outputs/reports/.gitkeep
+# outputs/ is tracked so generated reports sync across machines.
+# cache/ stays local (srt, whisper state, bundle/facts JSON — regenerable).
 cache/
 *.wav
 *.mp3

@@ -11,9 +11,12 @@ Both share the same setup.
 
 ## Setup on a fresh clone
 
+### Linux / macOS / WSL2 (recommended)
+
 ```bash
-# 1. System dependencies (sudo)
-sudo apt-get install -y ffmpeg pandoc fonts-noto-cjk
+# 1. System dependencies (sudo on Linux; brew on macOS)
+sudo apt-get install -y ffmpeg pandoc fonts-noto-cjk    # Debian/Ubuntu
+# brew install ffmpeg pandoc                            # macOS
 
 # 2. Python venv + package + PDF engine
 python3 -m venv .venv
@@ -28,14 +31,41 @@ fc-list :lang=ko | head -1       # confirms Korean fonts for KO PDFs
 which ffmpeg pandoc              # both required
 ```
 
-System dependencies:
+### Windows
+
+Two options:
+
+1. **WSL2 (recommended)** — install Ubuntu under WSL2, then use the Linux setup above. The Claude Code VSCode extension supports the WSL backend, and everything in this repo (including the bash snippets in [.claude/skills/ytshow/SKILL.md](.claude/skills/ytshow/SKILL.md)) just works.
+2. **Native Windows + PowerShell**:
+
+   ```powershell
+   # System deps
+   winget install -e --id Gyan.FFmpeg
+   winget install -e --id JohnMacFarlane.Pandoc
+   # Korean fonts: Windows ships Malgun Gothic — no install needed.
+
+   # Python venv + package + PDF engine
+   python -m venv .venv
+   .venv\Scripts\Activate.ps1
+   pip install -U pip
+   pip install -e ".[stt,test]"
+   pip install weasyprint    # if this fails (GTK/Pango), use wkhtmltopdf:
+                             # winget install -e --id wkhtmltopdf.wkhtmltox
+
+   # Sanity check
+   python -m pytest -q
+   ```
+
+   [src/ytshow/convert.py](src/ytshow/convert.py) auto-detects the PDF engine in the order `weasyprint → wkhtmltopdf → xelatex → pdflatex`. If weasyprint refuses to install on native Windows (it sometimes does), `wkhtmltopdf` is the easiest fallback and renders Korean glyphs from Malgun Gothic without extra config.
+
+### System dependencies
 
 | Package | Why |
 |---|---|
 | `ffmpeg` | Whisper STT fallback when no captions are available |
 | `pandoc` | `.pdf` / `.docx` conversion from Markdown |
-| `weasyprint` | pandoc's PDF engine (pip-installable, pure Python) |
-| `fonts-noto-cjk` | Korean glyphs in PDFs (without it, KO PDFs show tofu □□□) |
+| `weasyprint` (or `wkhtmltopdf` on native Windows) | pandoc's PDF engine |
+| `fonts-noto-cjk` (Linux/WSL2) / Malgun Gothic (Windows built-in) | Korean glyphs in PDFs |
 
 No `ANTHROPIC_API_KEY` is needed for the skill flow.
 
@@ -63,10 +93,23 @@ Claude Code will:
 4. Write four curated reports (EN minimal/rich + KO minimal/rich) — no inline timestamps, no `## Transcript notes`, paired Korean variant.
 5. Convert each report to PDF + DOCX via pandoc.
 6. Run [scripts/grounding_check.py](scripts/grounding_check.py) to verify every blockquote body is verbatim transcript.
+7. **Commit the 14 new output files to git and push to `origin/main`** so the reports sync across machines. `cache/` stays local. To opt out of the push for a single run, tell Claude Code "don't push" in the same message that triggers the skill.
 
-Output per video: 14 files in `outputs/docs/` (2 analysis docs) and `outputs/reports/` (4 reports × md/pdf/docx).
+Output per video: 14 files in `outputs/docs/` (2 analysis docs) and `outputs/reports/` (4 reports × md/pdf/docx). Tracked in git; pulling on another machine fetches them.
 
 The skill's full instructions — including chunking guidance for >60 min videos, translation rules, and editorial conventions — live in [.claude/skills/ytshow/SKILL.md](.claude/skills/ytshow/SKILL.md). The skill is self-contained: read it once and you know exactly what the skill flow does.
+
+### Deleting old reports
+
+A companion skill at [.claude/skills/ytshow-clean/SKILL.md](.claude/skills/ytshow-clean/SKILL.md) removes the 14 output files for a given video id (or all videos) and commits + pushes the deletion. Trigger it with:
+
+```
+/ytshow-clean https://www.youtube.com/watch?v=XXXXXXXXXXX
+이 영상 보고서 지워줘 <URL>
+delete reports for <id>
+```
+
+It does not regenerate anything — if you want to refresh, run `ytshow-clean` first, then `ytshow` again.
 
 ## CLI flow
 
