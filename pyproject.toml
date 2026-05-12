@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ytshow"
+version = "0.1.0"
+description = "Turn a YouTube URL into a fact-grounded analysis document and report"
+requires-python = ">=3.10"
+dependencies = [
+    "yt-dlp>=2024.0.0",
+    "youtube-transcript-api>=0.6.2",
+    "anthropic>=0.40.0",
+    "typer>=0.12.0",
+    "rich>=13.0.0",
+]
+
+[project.optional-dependencies]
+stt = ["faster-whisper>=1.0.0"]
+test = ["pytest>=8.0.0"]
+
+[project.scripts]
+ytshow = "ytshow.cli:app"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
