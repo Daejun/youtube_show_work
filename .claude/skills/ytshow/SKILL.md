@@ -299,7 +299,20 @@ After push, tell the user the commit hash and confirm the remote is in sync.
 
 ## Token / context budget
 
-Approximate transcript size as `duration_seconds * 80` characters (English caption rate). At 30 min that's ~25 KB, fits in context easily. Above ~60 min, chunk per chapter: produce `facts[]` and `quotes[]` per chapter, then merge into one `facts.json` before step 4.
+Approximate the formatted transcript at `duration_seconds * 18` characters (~14 chars/sec of English speech plus `[mm:ss]` prefix overhead). Roughly 4 chars per token, so:
+
+| Video length | Transcript text | Tokens |
+|---|---|---|
+| 30 min | ~31 KB | ~8K |
+| 60 min | ~63 KB | ~16K |
+| 2 hr | ~125 KB | ~32K |
+| 3 hr | ~190 KB | ~48K |
+
+The model's 200K-token context window easily holds **up to ~2–3 hours of video** alongside the system prompt, your reasoning, and the output JSON. No chunking is needed for typical 30–60 min videos.
+
+**Chunk above ~3 hours** (lectures, full conference recordings, marathon livestreams) to keep long-context attention quality high: process chapters one at a time, producing per-chapter `facts[]` and `quotes[]`, then merge into a single `facts.json` before step 4.
+
+If the transcript is in a high-density language (Korean, Japanese, Chinese), the chars/sec rate is similar but each character is more tokens — divide the chunk threshold by ~2 for those.
 
 ## What this skill does **not** handle
 
