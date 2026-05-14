@@ -14,7 +14,7 @@
 
 A Samsung researcher presents AiSIO (Accelerator-integrated Storage I/O, also called ACIO), an open-source project that extends the Linux storage stack to allow NVMe storage I/O to target GPU accelerator memory directly, without requiring data to transit host DRAM. The talk proceeds in three parts: a diagnosis of three software bottlenecks limiting accelerator I/O today; a tour of a new architecture (replacing an earlier libvm-based prototype) built around HOMIE, the Extend Access Library, and the Ublock infrastructure; and benchmark results on a 16-NVMe-drive Dell server at Samsung Memory Research Center demonstrating that application- and driver-layer optimization can reduce the CPU cost of 62 million IOPS from 8 cores to 1.5 cores, and that peer-to-peer DMA to GPU memory incurs no additional NVMe processing cost compared to host-memory targets.
 
-During the component overview, an audience member named Kristoff interrupted to object that the F_MAP_AP-based approach is a debugging tool carrying file-system-specific risk and corruption hazard under concurrent access, and later reiterated this concern in the Q&A. The main speaker acknowledged the objection and noted that PNF and flex files are also under consideration as management layers.
+During the component overview, an audience member named Christoph Hellwig interrupted to object that the F_MAP_AP-based approach is a debugging tool carrying file-system-specific risk and corruption hazard under concurrent access, and later reiterated this concern in the Q&A. The main speaker acknowledged the objection and noted that PNF and flex files are also under consideration as management layers.
 
 ## Topics covered
 
@@ -54,7 +54,7 @@ The new architecture eliminates libvm, custom kernel patches, and exclusive devi
 
 ### Open Source Components (00:11:46–00:16:19)
 
-The open-source component overview, presented as a component diagram with existing projects in blue and new or extended ones in orange, was interrupted by Kristoff's objection before the speaker continued with the remaining tools.
+The open-source component overview, presented as a component diagram with existing projects in blue and new or extended ones in orange, was interrupted by Christoph Hellwig's objection before the speaker continued with the remaining tools.
 
 - XNME: user-space I/O library extended with AiSIO primitives; wherever XNME is integrated the new I/O paths become available.
 - XME Perf: minimal-overhead benchmarking tool for CPU-initiated and device-initiated I/O patterns.
@@ -81,12 +81,12 @@ Four experiments cover: a tuned CPU baseline, application-layer optimization, dr
 
 ### Conclusion and Q&A (00:25:20–00:29:31)
 
-The speaker summarizes the vision and takes audience questions; Kristoff delivers a fuller version of his earlier objection.
+The speaker summarizes the vision and takes audience questions; Christoph Hellwig delivers a fuller version of his earlier objection.
 
 - All components open source, either already upstream or targeting upstream.
 - New device-initiated experiments with additional results are described as available.
 - Source code and white paper publicly available.
-- Kristoff's Q&A objection: F_MAP_AP is a debugging tool with file-system-specific content; poses corruption risk under concurrent activity; he stated he raised this with the team and its management two years prior and recommended expanding PFS block layout with relocation mechanisms.
+- Christoph Hellwig's Q&A objection: F_MAP_AP is a debugging tool with file-system-specific content; poses corruption risk under concurrent activity; he stated he raised this with the team and its management two years prior and recommended expanding PFS block layout with relocation mechanisms.
 - Speaker's response: team also sees benefits in PNF and flex files as management and abstraction layer; F_MAP_AP is not used exclusively.
 - Files in benchmark experiments: pre-allocated, fixed size.
 - Data-loader workload: image dataset (including TikTok dataset) and 8 GB files accessed randomly from GPU, inspired by Nvidia DALI framework.
@@ -95,7 +95,7 @@ The speaker summarizes the vision and takes audience questions; Kristoff deliver
 
 ### People
 
-- Kristoff (audience member; objected to F_MAP_AP approach during talk and Q&A)
+- Christoph Hellwig (audience member; objected to F_MAP_AP approach during talk and Q&A)
 
 ### Organizations
 
@@ -172,10 +172,10 @@ The speaker summarizes the vision and takes audience questions; Kristoff deliver
 — unknown
 
 > is a proper way to do it and I told for two years to multiple members in your team how to do it and it's really upsetting that you can keep publishing kind of dangerous
-— Kristoff
+— Christoph Hellwig
 
 > debugging tool. It has different content for different file systems. It's a massive risk for uh cost and corruption due to concurrent activity. That's why I told everyone including your boss two years ago, you need to expand the PFS block layout layouts that have all the mechanisms to deal with that including relocation mechanism mechanism for defending clients
-— Kristoff
+— Christoph Hellwig
 
 > that was more a comment than a than a question and uh I think we'll take that into consideration.
 — unknown

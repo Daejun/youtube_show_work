@@ -26,7 +26,7 @@ A Samsung researcher presents AiSIO (Accelerator-integrated Storage I/O, also ca
 ## People, organizations, products
 
 People:
-- Kristoff (audience member who objected to the F_MAP_AP approach during the talk)
+- Christoph Hellwig (audience member who objected to the F_MAP_AP approach during the talk)
 
 Organizations:
 - Samsung
@@ -87,7 +87,7 @@ Products:
 — unknown
 
 > is a proper way to do it and I told for two years to multiple members in your team how to do it and it's really upsetting that you can keep publishing kind of dangerous
-— Kristoff
+— Christoph Hellwig
 
 > debugging tool. It has different content for different file systems. It's a massive risk for uh cost and corruption due to concurrent activity. That's why I told everyone including your boss two years ago, you need to expand the PFS block layout layouts that have all the mechanisms to deal with that including relocation mechanism mechanism for defending clients
-— Kristoff
+— Christoph Hellwig

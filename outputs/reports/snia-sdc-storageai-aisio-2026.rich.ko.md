@@ -14,7 +14,7 @@
 
 Samsung 연구원이 AiSIO(Accelerator-integrated Storage I/O, 또는 ACIO)를 발표한다. NVMe 스토리지 I/O가 호스트 DRAM을 경유하지 않고 GPU 가속기 메모리를 직접 목표로 삼을 수 있도록 Linux 스토리지 스택을 확장하는 오픈소스 프로젝트다. 강연은 세 부분으로 구성된다. 첫째, 현재 가속기 I/O를 제약하는 세 가지 소프트웨어 병목 진단. 둘째, libvm 기반 초기 프로토타입을 대체하는 새 아키텍처(HOMIE, Extend Access Library, Ublock 인프라 중심) 소개. 셋째, Samsung Memory Research Center에 설치된 Dell 서버(NVMe 16개)를 대상으로 한 벤치마크 결과. 애플리케이션·드라이버 레이어 최적화를 통해 6,200만 IOPS에 필요한 CPU 비용을 8코어에서 1.5코어 상당으로 줄였으며, GPU 메모리를 대상으로 하는 피어-투-피어 DMA가 호스트 메모리 대상과 동일한 NVMe 처리 비용을 가진다는 것을 보였다.
 
-컴포넌트 개요 발표 중 청중인 Kristoff가 F_MAP_AP 기반 접근이 디버깅 도구 수준이며 동시 접근 시 손상 위험이 있다고 강하게 이의를 제기했고, Q&A에서 이를 재확인했다. 발표자는 이의를 인정하면서 PNF와 flex files도 관리 레이어 후보로 검토 중이라고 답했다.
+컴포넌트 개요 발표 중 청중인 Christoph Hellwig가 F_MAP_AP 기반 접근이 디버깅 도구 수준이며 동시 접근 시 손상 위험이 있다고 강하게 이의를 제기했고, Q&A에서 이를 재확인했다. 발표자는 이의를 인정하면서 PNF와 flex files도 관리 레이어 후보로 검토 중이라고 답했다.
 
 ## 다루는 주제
 
@@ -54,7 +54,7 @@ Samsung 연구원이 AiSIO(Accelerator-integrated Storage I/O, 또는 ACIO)를 �
 
 ### 오픈소스 컴포넌트 (00:11:46–00:16:19)
 
-기존 프로젝트는 파란색, 신규 또는 확장 항목은 주황색으로 표시된 컴포넌트 다이어그램 발표 중에 Kristoff의 이의 제기가 있었고, 발표자는 나머지 도구 소개를 이어갔다.
+기존 프로젝트는 파란색, 신규 또는 확장 항목은 주황색으로 표시된 컴포넌트 다이어그램 발표 중에 Christoph Hellwig의 이의 제기가 있었고, 발표자는 나머지 도구 소개를 이어갔다.
 
 - XNME: AiSIO 프리미티브로 확장된 크로스 플랫폼 I/O 라이브러리; XNME가 통합된 어느 곳에서든 새 I/O 경로를 사용할 수 있다.
 - XME Perf: 최소 오버헤드로 CPU 개시 및 장치 개시 I/O 패턴을 측정하는 벤치마크 도구.
@@ -81,12 +81,12 @@ Samsung 연구원이 AiSIO(Accelerator-integrated Storage I/O, 또는 ACIO)를 �
 
 ### 결론 및 Q&A (00:25:20–00:29:31)
 
-발표자가 비전을 요약하고 청중 질문을 받는다; Kristoff가 이전 이의 제기를 Q&A에서 더 상세히 전달한다.
+발표자가 비전을 요약하고 청중 질문을 받는다; Christoph Hellwig가 이전 이의 제기를 Q&A에서 더 상세히 전달한다.
 
 - 모든 컴포넌트가 오픈소스이며 이미 업스트림에 있거나 업스트림을 목표로 한다.
 - 장치 개시 실험의 새 결과가 추가로 공개되어 있다.
 - 소스 코드와 백서가 공개되어 있다.
-- Kristoff의 Q&A 이의 제기: F_MAP_AP는 파일 시스템별로 내용이 다른 디버깅 도구이며, 동시 접근 시 손상 위험이 크다; 2년 전에 팀과 관리자에게 이 문제를 제기하고 PFS 블록 레이아웃을 재배치 메커니즘 포함 방식으로 확장할 것을 권고했다고 밝혔다.
+- Christoph Hellwig의 Q&A 이의 제기: F_MAP_AP는 파일 시스템별로 내용이 다른 디버깅 도구이며, 동시 접근 시 손상 위험이 크다; 2년 전에 팀과 관리자에게 이 문제를 제기하고 PFS 블록 레이아웃을 재배치 메커니즘 포함 방식으로 확장할 것을 권고했다고 밝혔다.
 - 발표자 답변: 팀에서 PNF와 flex files의 장점도 검토 중이며 F_MAP_AP만 사용하는 것이 아니라고 설명했다.
 - 벤치마크 파일: 사전 할당된 고정 크기.
 - 데이터 로더 워크로드: 이미지 데이터셋(TikTok 데이터셋 포함)과 8 GB 파일을 GPU에서 무작위 접근; Nvidia DALI 프레임워크에서 영감을 받아 설계했다.
@@ -95,7 +95,7 @@ Samsung 연구원이 AiSIO(Accelerator-integrated Storage I/O, 또는 ACIO)를 �
 
 ### 인물
 
-- Kristoff (강연 중 F_MAP_AP 접근 방식에 이의를 제기한 청중)
+- Christoph Hellwig (강연 중 F_MAP_AP 접근 방식에 이의를 제기한 청중)
 
 ### 조직
 
@@ -172,10 +172,10 @@ Samsung 연구원이 AiSIO(Accelerator-integrated Storage I/O, 또는 ACIO)를 �
 — unknown
 
 > is a proper way to do it and I told for two years to multiple members in your team how to do it and it's really upsetting that you can keep publishing kind of dangerous
-— Kristoff
+— Christoph Hellwig
 
 > debugging tool. It has different content for different file systems. It's a massive risk for uh cost and corruption due to concurrent activity. That's why I told everyone including your boss two years ago, you need to expand the PFS block layout layouts that have all the mechanisms to deal with that including relocation mechanism mechanism for defending clients
-— Kristoff
+— Christoph Hellwig
 
 > that was more a comment than a than a question and uh I think we'll take that into consideration.
 — unknown

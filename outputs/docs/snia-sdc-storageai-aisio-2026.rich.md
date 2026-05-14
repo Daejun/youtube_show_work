@@ -39,7 +39,7 @@ AiSIO, ACIO, NVMe, GPU, accelerator, storage, I/O orchestration, peer-to-peer DM
 ## Entities
 
 ### People
-- Kristoff [14:34]
+- Christoph Hellwig [14:34]
 
 ### Organizations
 - Samsung [00:09]
@@ -156,14 +156,14 @@ AiSIO, ACIO, NVMe, GPU, accelerator, storage, I/O orchestration, peer-to-peer DM
 - UPC: module providing MMIO primitives for ringing the doorbell on a PCIe device, usable from CPU or accelerator. [13:02]
 - A small DMA buff infrastructure tap module is not yet upstream and is awaiting Linux kernel community feedback. [13:31]
 - Extend Access Library evolved through three backends: raw XFS on-disk decode, F_MAP_AP, and a planned F_MAP_AP plus EBPF traces to capture file change notifications. [13:56]
-- Around 14:34, an audience member identified as Kristoff interrupted to object to the approach, characterizing it as dangerous. [14:34]
+- Around 14:34, an audience member identified as Christoph Hellwig interrupted to object to the approach, characterizing it as dangerous. [14:34]
 - Field Path: file-level benchmarking tool comparing POSIX, GDS CUFILE, and AiSIO interfaces. [15:02]
 - CHO: provisioning tool analogous to Ansible for reproducible deployment of the AiSIO stack. [15:49]
 - A white paper and SDK are publicly available for the project. [16:14]
 
 **Quotes**
 > is a proper way to do it and I told for two years to multiple members in your team how to do it and it's really upsetting that you can keep publishing kind of dangerous
-> — Kristoff [14:36]
+> — Christoph Hellwig [14:36]
 
 
 ### Benchmark Results (00:16:19–00:25:20)
@@ -203,14 +203,14 @@ AiSIO, ACIO, NVMe, GPU, accelerator, storage, I/O orchestration, peer-to-peer DM
 - The stated vision is accelerators integrated into the storage stack with multiple IO modes while file systems, files, and OS still exist; all components are open source and either already upstream or targeting upstream. [25:36]
 - New device-initiated experiments with additional results are described as available. [26:06]
 - Source code and white paper are publicly available. [26:13]
-- During Q&A, Kristoff delivered a fuller objection characterizing the F_MAP_AP-based approach as a debugging tool with file-system-specific content that poses corruption risk due to concurrent activity; he stated he had raised this concern with the team and its management two years earlier and recommended expanding PFS block layout with relocation mechanisms for defending clients. [26:35]
+- During Q&A, Christoph Hellwig delivered a fuller objection characterizing the F_MAP_AP-based approach as a debugging tool with file-system-specific content that poses corruption risk due to concurrent activity; he stated he had raised this concern with the team and its management two years earlier and recommended expanding PFS block layout with relocation mechanisms for defending clients. [26:35]
 - The main speaker responded that the team also sees benefits in PNF and flex files as a management and abstraction layer, and that F_MAP_AP is not used exclusively. [27:14]
 - In the benchmark experiments, files were pre-allocated and fixed size. [27:54]
 - The data-loader workload used an image dataset (including a TikTok dataset) and large 8-gigabyte files, accessed randomly from the GPU; the workload design was inspired by the Nvidia DALI framework. [28:19]
 
 **Quotes**
 > debugging tool. It has different content for different file systems. It's a massive risk for uh cost and corruption due to concurrent activity. That's why I told everyone including your boss two years ago, you need to expand the PFS block layout layouts that have all the mechanisms to deal with that including relocation mechanism mechanism for defending clients
-> — Kristoff [26:35]
+> — Christoph Hellwig [26:35]
 
 > that was more a comment than a than a question and uh I think we'll take that into consideration.
 > — unknown [27:08]
@@ -219,7 +219,7 @@ AiSIO, ACIO, NVMe, GPU, accelerator, storage, I/O orchestration, peer-to-peer DM
 ## Transcript notes / caveats
 
 - The rolling-window YouTube auto-captions were converted from VTT; the very first phrase 'All right, thanks for joining this' (approx 00:03-00:05) was lost in the last-line extraction. Speaker name is not stated in the transcript; identified only as a Samsung researcher.
-- Kristoff's interruption at ~14:34 and fuller Q&A objection at 26:35 are captured verbatim from the transcript. His institutional affiliation is not stated.
+- Christoph Hellwig's interruption at ~14:34 and fuller Q&A objection at 26:35 are captured verbatim from the transcript. His institutional affiliation is not stated in the transcript.
 - The 'previous talk' referenced at 04:30 and some benchmark graphs are visual slide content not described in the transcript; slide details not captured.
 - Some transcript segments contain filler ('uh', 'um') and disfluencies from speech auto-captioning; these are preserved verbatim in quotes.
 - AMD product name appears as 'rock or rock XIO' in the transcript; the product name is AMD ROCk XIO based on context.
