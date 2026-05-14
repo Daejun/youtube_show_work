@@ -429,7 +429,7 @@ A Samsung researcher presents AiSIO (Accelerator-integrated Storage I/O, also ca
 [14:27] being able to get um EPF running such
 [14:30] that we can get the notification of
 [14:32] these changes
-[14:34] &gt;&gt; let's do that afterwards Kristoff there
+[14:34] &gt;&gt; let's do that afterwards Christoph Hellwig there
 [14:36] is a proper way to do it and I told for
 [14:38] two years to multiple members in your
 [14:40] team how to do it and it's really
@@ -684,7 +684,7 @@ A Samsung researcher presents AiSIO (Accelerator-integrated Storage I/O, also ca
 [25:23] demonstrate was this vision of being
 [25:24] able to integrate the accelerators into
 [25:27] the storage stack. And as you heard
-[25:29] there are clear objections from Kristoff
+[25:29] there are clear objections from Christoph Hellwig
 [25:31] and I think we can uh discuss and see
 [25:33] how we can address those but in general
 [25:36] what we're looking at is having these
@@ -718,7 +718,7 @@ A Samsung researcher presents AiSIO (Accelerator-integrated Storage I/O, also ca
 [26:52] mechanisms to deal with that including
 [26:55] relocation mechanism mechanism for
 [26:58] defending clients
-[27:06] thank you Kristoff.
+[27:06] thank you Christoph Hellwig.
 [27:08] So I think that was more a comment than
 [27:09] a than a question and uh I think we'll
 [27:12] take that into consideration. We also
