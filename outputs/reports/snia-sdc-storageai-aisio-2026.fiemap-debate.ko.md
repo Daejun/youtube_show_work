@@ -13,7 +13,7 @@ Samsung 연구원이 AiSIO의 오픈소스 컴포넌트를 소개하는 중, 청
 
 > "is a proper way to do it and I told for two years to multiple members in your team how to do it and it's really upsetting that you can keep publishing kind of dangerous"
 
-자막이 일부 잘렸으나 문맥상 다음과 같이 읽힌다: "그렇게 하는 것이 올바른 방법이고, 저는 2년 동안 당신 팀의 여러 구성원에게 어떻게 해야 하는지 말했습니다. 위험한 것을 계속 발표하는 것은 정말 실망스럽습니다."
+자막 일부 누락이 있으나 문맥상 다음과 같이 읽힌다: "그렇게 하는 것이 올바른 방법이고, 저는 2년 동안 당신 팀의 여러 구성원에게 어떻게 해야 하는지 말했습니다. 위험한 것을 계속 발표하는 것은 정말 실망스럽습니다."
 
 ### Christoph Hellwig의 발언 (26:35, Q&A)
 
@@ -25,130 +25,133 @@ Samsung 연구원이 AiSIO의 오픈소스 컴포넌트를 소개하는 중, 청
 
 > "that was more a comment than a than a question and uh I think we'll take that into consideration."
 
-"그건 질문이라기보다 의견이었고, 고려해보겠습니다." 그리고 추가로, 팀에서 PNF(pNFS)와 flex files도 관리 레이어 후보로 검토 중이며 F_MAP_AP만 사용하는 것이 아니라고 설명했다.
+팀에서 pNFS와 flex files도 관리 레이어 후보로 검토 중이며 F_MAP_AP만 사용하는 것이 아니라고 덧붙였다.
 
 ---
 
-## 2. 쟁점의 핵심: F_MAP_AP (FIEMAP)을 DMA에 사용하는 것의 위험성
+## 2. 쟁점의 핵심: FIEMAP을 DMA 주소 결정에 사용하는 것의 위험성
 
 ### 2.1 F_MAP_AP / FS_IOC_FIEMAP이란?
 
-`FS_IOC_FIEMAP`은 Linux 커널의 ioctl로, 파일의 논리적 바이트 범위를 물리적 블록 주소(extent)로 매핑해 반환한다. `struct fiemap`과 `struct fiemap_extent` 배열로 결과를 돌려주며, 각 엔트리에 물리적 디스크 블록 번호가 담긴다.
+`FS_IOC_FIEMAP`은 Linux 커널 ioctl로, 파일의 논리적 바이트 범위를 물리적 블록 주소(extent)로 매핑해 반환한다. AiSIO의 Extend Access Library는 이를 통해 파일의 물리적 LBA를 캐시해두고, GPU가 파일시스템을 거치지 않고 NVMe 커맨드를 직접 발행할 때 이 캐시된 주소를 사용한다.
 
-AiSIO의 Extend Access Library는 이 인터페이스(또는 유사한 `SEEK_DATA`/`SEEK_HOLE` + 커널 내부 경로)를 통해 파일의 물리적 LBA를 캐시해둔다. GPU가 스토리지에서 직접 데이터를 읽을 때 파일시스템을 거치지 않고 이 캐시된 주소로 NVMe 커맨드를 발행한다.
+Christoph Hellwig가 "디버깅 도구"라고 표현한 것은 기술적으로 정확하다. FIEMAP은 원래 `e2fsck`, `filefrag`, `xfs_bmap` 같은 진단·분석 유틸리티 용도로 설계되었으며, 파일시스템은 이 인터페이스에 동시성 보장을 제공하지 않는다.
 
-Christoph Hellwig가 "디버깅 도구"라고 표현한 것은 기술적으로 정확하다. FIEMAP은 원래 `e2fsck`, `filefrag`, `xfs_bmap` 같은 **진단·분석 유틸리티** 용도로 설계되었다. 파일시스템은 이 인터페이스에 동시성 보장을 제공하지 않는다.
+### 2.2 TOCTOU 경쟁 조건
 
-### 2.2 TOCTOU 경쟁 조건 (Time-of-Check to Time-of-Use Race)
-
-FIEMAP이 반환하는 물리적 블록 주소는 **호출 시점의 스냅샷**이다. 그 이후 어떤 작업이든 블록 주소를 바꿀 수 있으며, AiSIO의 캐시와 실제 레이아웃 사이에 불일치가 발생한다.
+FIEMAP이 반환하는 물리적 블록 주소는 호출 시점의 스냅샷이다. 그 이후 어떤 작업이든 블록 주소를 바꿀 수 있다.
 
 ```
-시간 →
-  t0: FIEMAP 호출 → LBA 1000 반환, 캐시에 저장
-  t1: 커널, 파일 블록을 LBA 2000으로 이동
-  t2: GPU가 LBA 1000으로 NVMe Read 발행
-  결과: 엉뚱한 데이터 읽기, 또는 다른 파일의 데이터 노출
+t0: FIEMAP 호출 → LBA 1000 반환, 캐시에 저장
+t1: 커널, 파일 블록을 LBA 2000으로 이동
+t2: GPU가 LBA 1000으로 NVMe Read 발행
+결과: 엉뚱한 데이터 읽기, 또는 다른 파일의 데이터 노출
 ```
 
-이것이 Christoph Hellwig가 말한 "corruption due to concurrent activity"의 정체다.
+### 2.3 파일시스템별 위험 요소
 
-### 2.3 파일시스템별 구체적 위험 요소
+- **XFS**: `xfs_swap_extents()`(온라인 디프래그)가 두 파일의 extent를 원자적으로 교환. VFS 이벤트 없이 LBA가 바뀐다. xfs_scrub extent 재배치도 동일.
+- **ext4**: `ext4_move_extents()` 온라인 디프래그 ioctl. delayed allocation 확정 단계에서 물리 블록 번호 변경 가능.
+- **btrfs**: Copy-on-Write 설계로 쓰기 시 항상 새 블록 할당. 백그라운드 balance 작업이 투명하게 블록 이동.
+- **공통**: fallocate PUNCH_HOLE, truncate 후 재쓰기 등.
 
-**XFS**
-- `xfs_swap_extents()`: 온라인 디프래그(`xfs_fsr`) 중 두 파일의 extent를 원자적으로 교환한다. FIEMAP 조회 후 이 작업이 실행되면 캐시된 LBA가 다른 파일을 가리킨다.
-- `xfs_alloc_file_space()` + fallocate: 사전 할당 확장 시 extent 재배치 가능.
-- XFS 온라인 fsck(xfs_scrub)의 extent 재배치 루틴도 투명하게 블록을 옮길 수 있다.
+### 2.4 EBPF 완화책이 충분하지 않은 이유
 
-**ext4**
-- `ext4_move_extents()` (온라인 디프래그 ioctl): 명시적 extent 이동.
-- 저널링 트랜잭션 중 delayed allocation 확정 단계에서 물리 블록 번호가 결정되거나 변경될 수 있다.
+AiSIO 팀의 완화책은 "EBPF 트레이스로 파일 변경 알림을 받아 캐시를 무효화한다"는 것이다.
 
-**btrfs**
-- Copy-on-Write 기반 설계: 쓰기 시 항상 새 블록에 기록하고 메타데이터를 업데이트. AiSIO 캐시가 가리키는 이전 블록은 새 데이터를 담지 않는다.
-- 백그라운드 balance 작업이 투명하게 블록을 재배치한다.
-
-**공통**
-- fallocate + FALLOC_FL_PUNCH_HOLE: 특정 범위를 hole로 만들어 블록 반환.
-- truncate + 재쓰기: 파일 축소 후 확장 시 다른 블록 할당.
-
-### 2.4 Samsung의 EBPF 완화책이 충분하지 않은 이유
-
-AiSIO 팀이 제시한 완화책은 "F_MAP_AP 결과 캐시에 EBPF 트레이스를 붙여 파일 변경 알림을 받는다"는 것이다. 이 접근의 문제점:
-
-**① 알림 지점과 실제 블록 이동 사이의 간격**  
-EBPF 훅이 파일 변경 이벤트를 감지하더라도, 훅 실행과 캐시 무효화 사이에 짧은 창이 존재한다. GPU가 이 창 안에 NVMe 커맨드를 발행하면 경쟁 조건이 그대로 남는다. 이는 소프트웨어 레이어에서 원자성을 보장하기 어려운 구조적 문제다.
-
-**② 감지 가능한 이벤트의 범위 한계**  
-inotify/fsnotify 기반 EBPF 훅은 `write()`, `truncate()`, `unlink()` 같은 VFS 레이어 이벤트를 감지한다. 그러나 아래 사례는 VFS 이벤트 없이 물리 블록이 바뀐다:
-- XFS 온라인 디프래그(`xfs_fsr`): `xfs_swap_extents()`는 파일 내용이 아닌 extent 트리만 수정한다.
-- xfs_scrub의 extent 재배치: 파일 데이터는 동일, 물리 주소만 변경.
-- btrfs balance: 파일 데이터 변경 없이 블록 이동.
-
-**③ 안정적이지 않은 커널 ABI**  
-내부 커널 함수에 EBPF 훅을 거는 것은 공식 커널 ABI에 해당하지 않는다. 커널 버전 간 함수 시그니처나 호출 경로가 바뀌면 훅이 무용지물이 된다. 커널 커뮤니티가 이를 upstream에 수용할 가능성이 낮다.
-
-**④ 사전 할당 파일에서의 안전한 외관**  
-Samsung의 벤치마크가 "pre-allocated fixed-size files"를 사용한다고 밝혔다. 이 조건에서는 블록 재배치가 거의 일어나지 않아 문제가 드러나지 않는다. 그러나 프로덕션 환경에서 백그라운드 디프래그가 활성화된 워크로드에서는 침묵하는 데이터 손상이 발생할 수 있다.
+- **경쟁 창 존재**: 훅 실행과 캐시 무효화 사이에 GPU가 NVMe 커맨드를 발행하면 race가 그대로 남는다.
+- **감지 불가 이벤트**: `xfs_swap_extents()`, btrfs balance, xfs_scrub extent 재배치는 VFS 레이어 이벤트를 발생시키지 않아 inotify/fsnotify 기반 훅이 탐지하지 못한다.
+- **불안정한 커널 ABI**: 내부 커널 함수에 EBPF 훅을 거는 것은 공식 ABI가 아니다. 커널 버전마다 함수 시그니처가 바뀔 수 있고, upstream 수용 가능성이 낮다.
+- **실험 조건의 한계**: 벤치마크가 사전 할당 고정 크기 파일만 사용하므로 문제가 드러나지 않는다. 백그라운드 디프래그가 활성화된 프로덕션에서는 침묵하는 데이터 손상이 발생할 수 있다.
 
 ---
 
-## 3. Christoph Hellwig가 제안한 올바른 해법: pNFS 블록 레이아웃
+## 3. 두 접근 방식의 장단점 비교
 
-Christoph Hellwig가 언급한 "PFS block layout with relocation mechanisms for defending clients"는 pNFS(Parallel NFS) 블록 레이아웃 프로토콜을 가리킨다.
+### 3.1 Samsung 방식: FIEMAP + EBPF 캐시
 
-### 3.1 pNFS 블록 레이아웃의 작동 방식 (RFC 5663)
+**장점**
 
-pNFS는 메타데이터 서버(MDS)와 데이터 서버(DS)를 분리한다. 클라이언트가 직접 스토리지에 접근하려면 MDS로부터 **레이아웃 그랜트(layout grant)**를 받아야 한다.
+- **정상 경로 오버헤드 없음**: 캐시가 유효한 동안은 LBA 조회 없이 GPU가 즉시 NVMe 커맨드를 발행한다. 50M IOPS 벤치마크 결과가 이 구조에서 나온다.
+- **즉각적 구현 가능**: 기존 FIEMAP ioctl을 재사용하며, 커널 수정 없이 사용자 공간에서 구현된다.
+- **파일시스템 수정 불필요**: XFS/ext4/btrfs 어느 쪽도 건드리지 않는다.
+- **ML 훈련 워크로드에서 실질적 안전**: 사전 할당된 고정 크기 파일을 읽기만 하는 경우 블록 재배치가 발생하지 않아 race condition이 현실화되지 않는다.
 
-```
-클라이언트 → MDS: LAYOUTGET 요청
-MDS → 클라이언트: 레이아웃 그랜트 (파일 범위 → 물리 블록 매핑 포함)
-클라이언트: 그랜트 범위 내에서 직접 스토리지 DMA 수행
-MDS가 블록 재배치 필요 시: 클라이언트에게 LAYOUTRECALL 발행
-클라이언트: 진행 중인 I/O 완료 후 레이아웃 반환(LAYOUTRETURN)
-MDS: 안전하게 블록 재배치 수행
-```
+**단점**
 
-이 프로토콜의 핵심은 **레이아웃 그랜트가 살아있는 동안 파일시스템이 해당 extent를 재배치할 수 없다**는 강제적 보장이다. FIEMAP과 달리 스냅샷이 아닌 **임대(lease)** 개념이다.
-
-### 3.2 Flexible File Layout (RFC 8435)
-
-더 현대적인 flex file layout은 pNFS 위에 다중 미러링, I/O 페일오버, 레이아웃 위임(delegation)을 추가한다. 클라이언트 DMA 중 재배치가 필요한 경우 레이아웃 recall → I/O 일시정지 → 재배치 완료 → 새 레이아웃 발급의 명시적 핸드셰이크로 일관성을 보장한다.
-
-### 3.3 왜 이것이 "defending clients"인가
-
-Christoph Hellwig의 "defending clients" 표현은 pNFS의 recall 메커니즘을 가리킨다. 파일시스템이 클라이언트에게 레이아웃을 회수(recall)하기 전에 클라이언트가 I/O를 완료하거나 중단할 수 있도록 보장한다. 클라이언트는 회수 응답 전까지 유효한 레이아웃을 가지고 있음이 보장된다. 이것이 FIEMAP+EBPF 방식과의 근본적인 차이다: FIEMAP은 사후 알림(post-hoc notification)을 시도하고, pNFS는 사전 동의(prior consent)를 요구한다.
+- **구조적 안전 보장 없음**: TOCTOU race를 소프트웨어 레이어에서 제거할 수 없다. EBPF 알림은 사후 감지(post-hoc)이며 원자성이 없다.
+- **VFS 이벤트 없는 재배치 탐지 불가**: xfs_fsr, btrfs balance, xfs_scrub 등이 물리 블록을 옮겨도 훅이 반응하지 않는다.
+- **파일시스템마다 동작 상이**: FIEMAP 결과의 의미와 갱신 시점이 파일시스템마다 다르다.
+- **커널 upstream 수용 어려움**: 내부 ABI에 의존하는 EBPF 훅은 커널 커뮤니티의 검토를 통과하기 어렵다.
+- **워크로드 범위 제한**: 파일이 변경되거나 생성·삭제가 빈번한 일반 워크로드로 확장하기 어렵다.
 
 ---
 
-## 4. Samsung 측 입장의 평가
+### 3.2 Hellwig 권고: pNFS 블록 레이아웃 (RFC 5663)
 
-Samsung 발표자는 두 가지 답변을 제시했다:
+pNFS는 메타데이터 서버(MDS)와 데이터 서버(DS)를 분리한다. 클라이언트가 직접 I/O를 하려면 MDS로부터 레이아웃 그랜트(layout grant)를 받아야 하며, MDS가 블록을 재배치하려면 클라이언트에게 LAYOUTRECALL을 보내고 응답을 기다려야 한다.
 
-**① "F_MAP_AP를 단독으로 사용하지 않는다"**  
-이는 Hellwig의 비판을 직접 반박하지 않는다. FIEMAP이 I/O 경로의 일부로 사용되는 한, 레이아웃 보장 없이 DMA 주소를 결정하는 근본 문제는 남는다.
+```
+클라이언트 → MDS: LAYOUTGET
+MDS → 클라이언트: 레이아웃 그랜트 (범위 → LBA 매핑)
+클라이언트: 그랜트 범위 내에서 직접 NVMe DMA
+재배치 필요 시: MDS → LAYOUTRECALL → 클라이언트 응답 → 재배치 수행
+```
 
-**② "PNF와 flex files도 관리 레이어 후보로 검토 중"**  
-이것이 핵심적인 양보다. Samsung 팀도 pNFS 계층이 필요함을 인식하고 있다는 의미다. 그러나 현재 구현에서 pNFS 레이아웃 관리 없이 FIEMAP 기반 캐시를 사용하는 것은 Hellwig의 지적대로 위험하다.
+핵심: FIEMAP은 사후 알림(post-hoc notification), pNFS는 사전 동의(prior consent). 그랜트가 살아있는 동안 파일시스템이 해당 extent를 재배치할 수 없다는 강제적 보장이 있다.
 
-**③ "벤치마크 파일은 사전 할당된 고정 크기"**  
-이것은 문제를 회피하는 실험 설계다. 실제 데이터 로더 워크로드에서는 파일 생성·삭제·수정이 빈번하고 백그라운드 디프래그가 활성화되어 있다.
+**장점**
+
+- **구조적 동시성 보장**: lease + recall 메커니즘으로 TOCTOU race를 프로토콜 수준에서 차단한다.
+- **파일시스템 독립적**: 프로토콜 레이어 추상화로 XFS/ext4/btrfs 구현 차이를 감춘다.
+- **표준 RFC 기반**: 커널 upstream 경로가 명확하고 장기 유지보수 가능성이 높다.
+- **클라이언트 보호 내장**: LAYOUTRECALL 핸드셰이크로 재배치 전 진행 중인 I/O 완료를 보장한다.
+
+**단점**
+
+- **성능 오버헤드**: pNFS는 네트워크 파일시스템 프로토콜로 설계되었다. 로컬 NVMe에 적용하려면 루프백 NFS 스택이 필요하고, 파일마다 MDS 왕복(LAYOUTGET RTT)이 발생한다. Samsung이 보여준 50M IOPS를 full pNFS 위에서 재현하기는 어렵다.
+- **LAYOUTRECALL 시 I/O 일시 정지**: 백그라운드 디프래그가 발동하면 GPU I/O가 핸드셰이크 완료 전까지 멈춘다. 레이턴시 스파이크가 발생한다.
+- **MDS가 병목 가능**: 대규모 GPU 클러스터에서 수천 개의 파일에 동시에 LAYOUTGET이 몰리면 MDS가 포화된다.
+- **구현 복잡도 높음**: XFS, ext4, btrfs 각각에 레이아웃 프로토콜을 구현하고 커널 커뮤니티 리뷰를 통과시키는 것은 수년 단위의 작업이다.
 
 ---
 
-## 5. 결론
+### 3.3 현실적 중간 지점: 경량 extent lease
 
-Christoph Hellwig의 비판은 기술적으로 타당하다. 요약하면:
+Hellwig의 발언을 "full pNFS를 배포하라"로 해석하기보다, "pNFS가 갖춘 lease + recall 시맨틱을 로컬 커널 인터페이스로 구현하라"로 읽는 것이 더 정확하다. 구체적으로는 다음과 같은 방향이다.
 
-| 쟁점 | FIEMAP + EBPF (Samsung 현재 방식) | pNFS 블록 레이아웃 (Hellwig 권고) |
-|---|---|---|
-| 동시성 보장 | 없음 (스냅샷) | 있음 (lease/recall) |
-| 블록 재배치 시 안전성 | 경쟁 조건 발생 가능 | recall 핸드셰이크로 보장 |
-| 파일시스템 호환성 | 파일시스템마다 동작 상이 | 프로토콜 수준 추상화 |
-| 커널 upstream 수용 가능성 | 낮음 (내부 ABI 의존) | 높음 (표준 RFC 기반) |
-| 실험 조건 한계 | 고정 사전 할당 파일에서만 안전 | 일반 워크로드에서 안전 |
+- **extent-pin ioctl**: 페이지를 DMA를 위해 핀닝하는 `get_user_pages()`처럼, extent를 DMA 기간 동안 핀닝하는 커널 인터페이스를 추가한다. 핀된 extent는 파일시스템이 재배치할 수 없다.
+- **HOMIE가 lease 관리자**: 기존 HOMIE 데몬이 extent 핀 취득·반환을 관리하면 정상 경로는 ioctl 1회로 끝난다. 재배치가 필요할 때만 동기화 비용이 발생한다.
+- **파일시스템별 구현 범위**: 전체 pNFS 프로토콜이 아닌 extent-pin/unpin 훅만 각 파일시스템에 추가하면 된다. 구현 범위가 훨씬 작다.
 
-Samsung의 설계 목표("interoperability over replacement", "accelerators as first-class citizens")는 가치 있지만, 현재 FIEMAP 기반 extent 캐시는 프로덕션에서 사용하기 위한 안전 보장을 결여하고 있다. Hellwig가 2년 전부터 이 문제를 제기했음에도 구현이 바뀌지 않은 것은, Samsung 팀이 기술적으로는 문제를 인식하면서도 pNFS 레이어 통합의 복잡성을 피하고 있음을 시사한다.
+| | FIEMAP + EBPF | 경량 extent lease | full pNFS |
+|---|---|---|---|
+| 정상 경로 오버헤드 | 없음 | ioctl 1회 | LAYOUTGET RTT |
+| 재배치 시 오버헤드 | 없음 (race) | pin 해제 동기화 | RECALL 핸드셰이크 |
+| 동시성 보장 | 없음 | 있음 | 있음 |
+| 구현 난이도 | 낮음 | 중간 | 매우 높음 |
+| Upstream 수용 가능성 | 낮음 | 높음 | 높음 |
 
-AiSIO가 실제 운영 환경에서 사용되려면 pNFS 블록 레이아웃 또는 그에 상응하는 레이아웃 임대 메커니즘이 필요하다. EBPF 알림 기반 완화책은 연구 프로토타입 수준에서만 허용 가능한 접근이다.
+이 방향이 Hellwig가 2년간 제안한 내용의 실체에 가장 가까울 것으로 보인다. Samsung 팀이 구현하지 않은 이유는 기술적 반박보다는 커널 인터페이스 추가에 따르는 커뮤니티 협의와 유지보수 부담을 회피하려는 것으로 보인다.
+
+---
+
+## 4. 종합 평가
+
+**Hellwig의 비판은 기술적으로 타당하다.** FIEMAP 기반 DMA는 구조적 안전 보장이 없고, EBPF 완화책은 VFS 이벤트를 발생시키지 않는 블록 이동을 탐지하지 못한다.
+
+**Samsung의 성능 우선 접근도 이해할 수 있다.** ML 훈련의 데이터 로딩 워크로드(사전 할당 대용량 파일, 읽기 전용)에서는 race condition이 현실화될 가능성이 매우 낮다. 이 조건에서는 50M IOPS라는 성과를 full pNFS로는 달성하기 어렵다.
+
+**그러나 두 입장은 배타적이지 않다.** FIEMAP 캐시는 프로토타입과 특정 워크로드 최적화에 유효하지만, 범용 운영 환경을 위해서는 extent lease 시맨틱이 반드시 필요하다. Samsung이 pNFS/flex files를 검토 중이라고 인정한 것은 이 사실을 팀 내부에서도 인식하고 있음을 보여준다.
+
+| 쟁점 | FIEMAP + EBPF | 경량 extent lease | full pNFS |
+|---|---|---|---|
+| 동시성 보장 | 없음 | 있음 | 있음 |
+| 50M IOPS 달성 가능성 | 있음 | 대체로 가능 | 어려움 |
+| 재배치 시 안전성 | 경쟁 조건 | 보장 | 보장 |
+| 파일시스템 호환성 | 파일시스템마다 상이 | 구현 필요 | 프로토콜 추상화 |
+| Upstream 수용 가능성 | 낮음 | 높음 | 높음 |
+| ML 훈련 특화 안전성 | 실질적으로 안전 | 안전 | 안전 |
+| 일반 워크로드 안전성 | 위험 | 안전 | 안전 |
+
+AiSIO가 연구 프로토타입을 넘어 범용 운영 환경에 안착하려면 extent lease 메커니즘의 커널 통합이 불가피하다. EBPF 완화책은 그 과도기적 수단으로는 수용 가능하지만 최종 해법이 될 수 없다.
