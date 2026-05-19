@@ -131,21 +131,46 @@ def _download_audio(url: str, out_dir: Path) -> Path:
 def _whisper_transcribe(
     audio_path: Path, language: str | None, model_size: str
 ) -> TranscriptResult:
+    """Transcribe an audio file with faster-whisper.
+
+    Tries ``device='auto'`` first so GPU users get the speedup, then falls
+    back to ``device='cpu'`` if the CUDA runtime is missing (common on
+    fresh Windows installs without the NVIDIA libraries).
+    """
     from faster_whisper import WhisperModel
 
-    model = WhisperModel(model_size, device="auto", compute_type="auto")
-    segments, info = model.transcribe(
-        str(audio_path),
-        language=language,
-        vad_filter=True,
-        word_timestamps=False,
-    )
-    out: list[TranscriptSegment] = []
-    for s in segments:
-        text = (s.text or "").strip()
-        if not text:
-            continue
-        out.append(TranscriptSegment(start=float(s.start), end=float(s.end), text=text))
+    def _run(device: str, compute_type: str) -> tuple[list[TranscriptSegment], object]:
+        model = WhisperModel(model_size, device=device, compute_type=compute_type)
+        segments, info = model.transcribe(
+            str(audio_path),
+            language=language,
+            vad_filter=True,
+            word_timestamps=False,
+        )
+        out: list[TranscriptSegment] = []
+        # iterating the segments generator is what actually triggers GPU/CPU work,
+        # so any device-load failure surfaces here, not at model construction.
+        for s in segments:
+            text = (s.text or "").strip()
+            if not text:
+                continue
+            out.append(TranscriptSegment(start=float(s.start), end=float(s.end), text=text))
+        return out, info
+
+    try:
+        out, info = _run("auto", "auto")
+    except RuntimeError as e:
+        msg = str(e).lower()
+        cuda_missing = (
+            "cublas" in msg
+            or "cudnn" in msg
+            or "cuda" in msg
+            or "not found or cannot be loaded" in msg
+        )
+        if not cuda_missing:
+            raise
+        # Retry on CPU with int8 quantization — slower but works without CUDA.
+        out, info = _run("cpu", "int8")
     return TranscriptResult(segments=out, source="whisper", language=info.language)
 
 
