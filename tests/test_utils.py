@@ -57,3 +57,34 @@ def test_slugify_title_long_capped():
     assert slug.startswith("big-long-keynote-announcement-")
     assert slug.endswith("-2026")
     assert slug.count("-") == 4  # 4 separators -> 5 tokens
+
+
+def test_index_parser_preserves_escaped_pipe_titles(tmp_path):
+    """Titles containing a literal `|` are written as `\\|` and must round-trip."""
+    from ytshow.utils import update_outputs_index, _parse_outputs_index
+
+    index_path = tmp_path / "INDEX.md"
+    update_outputs_index(
+        slug="android-show-io-edition-2026",
+        title="\U0001f3ac Watch The Android Show | I/O Edition 2026",
+        channel="Android",
+        upload_date="20260512",
+        video_id="dXCCleAddEA",
+        url="https://www.youtube.com/watch?v=dXCCleAddEA",
+        index_path=index_path,
+    )
+    update_outputs_index(
+        slug="google-io-25-keynote",
+        title="Google I/O '25 Keynote",
+        channel="Google",
+        upload_date="20250520",
+        video_id="o8NiE3XMPrM",
+        url="https://www.youtube.com/watch?v=o8NiE3XMPrM",
+        index_path=index_path,
+    )
+    rows = _parse_outputs_index(index_path.read_text(encoding="utf-8"))
+    slugs = {r["slug"] for r in rows}
+    assert slugs == {"android-show-io-edition-2026", "google-io-25-keynote"}
+    android_row = next(r for r in rows if r["slug"] == "android-show-io-edition-2026")
+    assert "|" in android_row["video_title"]
+    assert android_row["youtube_id"] == "dXCCleAddEA"

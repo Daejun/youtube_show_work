@@ -139,6 +139,21 @@ outputs/reports/<slug>.rich.ko.{md,pdf,docx}
 """
 
 
+_ESCAPED_PIPE = "\x00ESCAPED_PIPE\x00"
+
+
+def _split_table_row(line: str) -> list[str]:
+    """Split a Markdown table row on `|`, honoring `\\|` escapes inside cells."""
+    body = line.strip()
+    if body.startswith("|"):
+        body = body[1:]
+    if body.endswith("|"):
+        body = body[:-1]
+    body = body.replace(r"\|", _ESCAPED_PIPE)
+    cells = [c.replace(_ESCAPED_PIPE, "|").strip().strip("`") for c in body.split("|")]
+    return cells
+
+
 def _parse_outputs_index(text: str) -> list[dict[str, str]]:
     """Return the table rows in outputs/INDEX.md as a list of dicts."""
     rows: list[dict[str, str]] = []
@@ -147,7 +162,7 @@ def _parse_outputs_index(text: str) -> list[dict[str, str]]:
     for raw in text.splitlines():
         line = raw.rstrip()
         if line.startswith("|"):
-            cells = [c.strip().strip("`") for c in line.strip("|").split("|")]
+            cells = _split_table_row(line)
             if not header:
                 header = [c.lower().replace(" ", "_") for c in cells]
                 in_table = True
@@ -186,7 +201,7 @@ def update_outputs_index(
 
     new_row = {
         "slug": slug,
-        "video_title": title.replace("|", "\\|"),
+        "video_title": title,
         "channel": channel,
         "uploaded": upload_fmt or "",
         "youtube_id": video_id,
@@ -196,15 +211,19 @@ def update_outputs_index(
     by_slug[slug] = new_row
     rows_sorted = sorted(by_slug.values(), key=lambda r: r.get("slug", ""))
 
+    def _cell(value: str) -> str:
+        # Escape `|` inside cell values so the Markdown table stays well-formed.
+        return (value or "").replace("|", "\\|")
+
     body = _INDEX_HEADER
     for r in rows_sorted:
         body += "| `{slug}` | {title} | {channel} | {uploaded} | `{vid}` | {url} |\n".format(
-            slug=r.get("slug", ""),
-            title=r.get("video_title", ""),
-            channel=r.get("channel", ""),
-            uploaded=r.get("uploaded", ""),
-            vid=r.get("youtube_id", ""),
-            url=r.get("url", ""),
+            slug=_cell(r.get("slug", "")),
+            title=_cell(r.get("video_title", "")),
+            channel=_cell(r.get("channel", "")),
+            uploaded=_cell(r.get("uploaded", "")),
+            vid=_cell(r.get("youtube_id", "")),
+            url=_cell(r.get("url", "")),
         )
     body += _INDEX_FOOTER
     index_path.write_text(body, encoding="utf-8")
